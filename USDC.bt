@@ -1,0 +1,192 @@
+//------------------------------------------------
+//--- 010 Editor v12.0.1 Binary Template
+//
+//      File: 
+//   Authors: 
+//   Version: 
+//   Purpose: 
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+typedef char uint8_t;
+typedef int64 int64_t;
+typedef uint64 uint64_t;
+typedef uint32 uint32_t;
+
+struct _BootStrap {
+    uint8_t ident[8]; // "PXR-USDC"
+    uint8_t version[8]; // 0: major, 1: minor, 2: patch, rest unused.
+    int64_t tocOffset;
+    int64_t _reserved[8];
+
+    if(ident != "PXR-USDC") {
+        Warning( "File is not a valid USDC file. Template stopped." );
+        return -1;
+    }
+
+    local uint8_t majver = version[0];
+    local uint8_t minver = version[1];
+    local uint8_t patchver = version[2];
+};
+
+typedef int size_t;
+
+// pxr\usd\usd\crateFile.cpp:3184
+_BootStrap bootstrap;
+FSeek(bootstrap.tocOffset);
+
+local size_t _SectionNameMaxLength <hidden=true> = 15;
+
+// You need the dll to be next to this template file.
+// Or copy your own lz4 dll and change this signature.
+#link "msys-lz4-1.dll"
+int LZ4_decompress_safe (
+    const char src[], 
+    char dst[], 
+    int compressedSize, 
+    int dstCapacity
+);
+
+#endlink
+
+
+string ReadSTR(char input[]) { 
+    string s = "" + input;
+    return s; 
+};
+
+
+
+typedef struct (char array[], int start, int len) {
+    local int lenCopy = len;
+    local char str[len + 1] <optimize=false>;
+    Memcpy(str, array, len + 1, 0, start);    
+} StringTest<optimize=false, read=ReadStringTest>;
+
+string ReadStringTest(StringTest& input) { 
+    string s = "" + input.str;
+    return s; 
+};
+
+typedef struct {
+    uint64_t resultSize;
+    uint64_t compressedSize;
+    char nChunks;
+    char compressed[compressedSize - 1];
+    local char result[resultSize] <read=ReadSTR>;
+    local int decompressResult = LZ4_decompress_safe(
+        compressed, 
+        result, 
+        compressedSize - 1, 
+        resultSize);
+} CompressedString;
+
+
+typedef struct {
+    char name[_SectionNameMaxLength+1];
+    int64_t start, size;
+} _Section <read=ReadSection>;
+
+string ReadSection(_Section& section) {
+    return section.name;
+}
+
+// pxr\usd\usd\crateFile.cpp:1295
+struct SectionVector {
+  uint64_t size;
+  _Section item[size] <optimize=false, open=false>;
+};
+
+
+struct _TableOfContents {
+    // _Section const *GetSection(_SectionName) const;
+    // int64_t GetMinimumSectionStart() const;
+    SectionVector sections <optimize=false>;
+};
+
+_TableOfContents tableOfContents <open=true>;
+
+void Error(string message) {
+    Warning(message);
+    Exit(-1);
+}
+
+int GetSection(_TableOfContents& contents, char name[]){
+    local uint64_t i;
+    for(i=0;i<contents.sections.size;++i) {
+        if(contents.sections.item[i].name == name) {
+            return i;
+        }
+    }
+
+    Error("Cannot find section");
+}
+
+
+
+typedef struct {
+    uint64_t numTokens;
+    CompressedString compressedString;
+    local int i<hidden=true> = 0;
+    local int lastStringStart<hidden=true> = 0;
+    local int len<hidden=true> = 0;
+    local int resultSize = compressedString.resultSize;
+
+    local struct {
+        for(i=0; i<resultSize;++i){
+            if(i == resultSize - 1 || compressedString.result[i] == 0) {
+                len = i - lastStringStart;
+
+                local StringTest str(compressedString.result, lastStringStart, len) ;
+                lastStringStart = i + 1;
+            }
+        }
+    } Tokens;
+} _TokensData;
+
+void ReadTokens(_TableOfContents& contents) {
+    FSeek(contents.sections.item[GetSection(contents, "TOKENS")].start);
+
+    _TokensData FileTokenData;
+}
+
+
+typedef struct {
+    uint32_t index;
+    // local string token = FileTokenData.Tokens.str[index].str;
+} _StringRef <read=ReadStringRef>;
+
+string ReadStringRef(_StringRef& ref) {
+    return FileTokenData.Tokens.str[ref.index].str;
+}
+
+typedef struct {
+    uint64_t size;
+    _StringRef strings[size] <optimize=false>;
+} _StringsData;
+
+void ReadStrings(_TableOfContents& contents) {
+    FSeek(contents.sections.item[GetSection(contents, "STRINGS")].start);
+    _StringsData FileStringsData;
+}
+
+
+typedef struct {
+    // pxr\usd\usd\crateFile.cpp:3290
+    uint64_t numFields;
+    uint64_t compressedSize;
+    // TODO continue
+} _FieldsData;
+
+
+void ReadFields(_TableOfContents& contents) {
+    FSeek(contents.sections.item[GetSection(contents, "FIELDS")].start);
+    _FieldsData FileFieldsData;
+}
+
+ReadTokens(tableOfContents);
+ReadStrings(tableOfContents);
+ReadFields(tableOfContents);
